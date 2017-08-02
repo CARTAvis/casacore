@@ -103,7 +103,7 @@ LatticeStatistics<T>::LatticeStatistics (const MaskedLattice<T>& lattice,
   showProgress_p(showProgress),
   forceDisk_p(forceDisk),
   doneFullMinMax_p(False),
-  _saf(), _chauvIters() {
+  _algConf(), _chauvIters() {
    nxy_p.resize(0);
    statsToPlot_p.resize(0);   
    range_p.resize(0);
@@ -147,7 +147,7 @@ LatticeStatistics<T>::LatticeStatistics (const MaskedLattice<T>& lattice,
   showProgress_p(showProgress),
   forceDisk_p(forceDisk),
   doneFullMinMax_p(False),
-  _saf(), _chauvIters()
+  _algConf(), _chauvIters()
 {
    nxy_p.resize(0);
    statsToPlot_p.resize(0);
@@ -171,7 +171,7 @@ LatticeStatistics<T>::LatticeStatistics (const MaskedLattice<T>& lattice,
 template <class T>
 LatticeStatistics<T>::LatticeStatistics(const LatticeStatistics<T> &other) 
 : pInLattice_p(0), pStoreLattice_p(0),
-  _saf(other._saf), _chauvIters(other._chauvIters),
+  _algConf(other._algConf), _chauvIters(other._chauvIters),
   _aOld(other._aOld), _bOld(other._bOld), _aNew(other._aNew), _bNew(other._bNew)
 //
 // Copy constructor.  Storage lattice is not copied.
@@ -236,7 +236,7 @@ LatticeStatistics<T> &LatticeStatistics<T>::operator=(const LatticeStatistics<T>
       doneFullMinMax_p= other.doneFullMinMax_p;
       minFull_p = other.minFull_p;
       maxFull_p = other.maxFull_p;
-      _saf = other._saf;
+      _algConf = other._algConf;
       _chauvIters = other._chauvIters;
       _aNew = other._aNew;
       _bNew = other._bNew;
@@ -678,10 +678,7 @@ Bool LatticeStatistics<T>::calculateStatistic (Array<AccumType>& slice,
 
 template <class T>
 void LatticeStatistics<T>::configureClassical() {
-    if (_saf.algorithm() != StatisticsData::CLASSICAL) {
-        _saf.configureClassical();
-        needStorageLattice_p = True;
-    }
+    _algConf.algorithm = StatisticsData::CLASSICAL;
     _setDefaultCoeffs();
 }
 
@@ -689,10 +686,7 @@ template <class T>
 void LatticeStatistics<T>::configureClassical(
     Double aOld, Double bOld, Double aNew, Double bNew
 ) {
-    if (_saf.algorithm() != StatisticsData::CLASSICAL) {
-        _saf.configureClassical();
-        needStorageLattice_p = True;
-    }
+    _algConf.algorithm = StatisticsData::CLASSICAL;
     _aOld = aOld;
     _bOld = bOld;
     _aNew = aNew;
@@ -702,10 +696,11 @@ void LatticeStatistics<T>::configureClassical(
 template <class T>
 void LatticeStatistics<T>::configureHingesFences(Double f) {
     if (
-        _saf.algorithm() != StatisticsData::HINGESFENCES
-        || ! near(f, _saf.hingesFencesFactor())
+        _algConf.algorithm != StatisticsData::HINGESFENCES
+        || ! near(f, _algConf.hf)
     ) {
-        _saf.configureHingesFences(f);
+        _algConf.algorithm = StatisticsData::HINGESFENCES;
+        _algConf.hf = f;
         needStorageLattice_p = True;
     }
 }
@@ -716,18 +711,19 @@ void LatticeStatistics<T>::configureFitToHalf(
     FitToHalfStatisticsData::USE_DATA useData,
     AccumType centerValue
 ) {
-    Bool reconfig = _saf.algorithm() != StatisticsData::FITTOHALF;
-    if (! reconfig) {
-        typename StatisticsAlgorithmFactory<AccumType, const T*, const Bool*>::FitToHalfData data
-            = _saf.fitToHalfData();
-        reconfig = centerType != data.center || useData != data.side
-            || (
-                centerType == FitToHalfStatisticsData::CVALUE
-                && ! near(centerValue, data.centerValue)
-            );
-    }
-    if (reconfig) {
-        _saf.configureFitToHalf(centerType, useData, centerValue);
+    if (
+        _algConf.algorithm != StatisticsData::FITTOHALF
+        || centerType != _algConf.ct
+        || useData != _algConf.ud
+        || (
+            centerType == FitToHalfStatisticsData::CVALUE
+            && ! near(centerValue, _algConf.cv)
+        )
+    ) {
+        _algConf.algorithm = StatisticsData::FITTOHALF;
+        _algConf.ct = centerType;
+        _algConf.ud = useData;
+        _algConf.cv = centerValue;
         needStorageLattice_p = True;
     }
 }
@@ -736,14 +732,14 @@ template <class T>
 void LatticeStatistics<T>::configureChauvenet(
     Double zscore, Int maxIterations
 ) {
-    Bool reconfig = _saf.algorithm() != StatisticsData::CHAUVENETCRITERION;
-    if (! reconfig) {
-        typename StatisticsAlgorithmFactory<AccumType, const T*, const Bool*>::ChauvenetData data
-            = _saf.chauvenetData();
-        reconfig = ! near(zscore, data.zScore) || maxIterations != data.maxIter;
-    }
-    if (reconfig) {
-        _saf.configureChauvenet(zscore, maxIterations);
+    if (
+        _algConf.algorithm != StatisticsData::CHAUVENETCRITERION
+        || ! near(zscore, _algConf.zs)
+        || maxIterations != _algConf.mi
+    ) {
+        _algConf.algorithm = StatisticsData::CHAUVENETCRITERION;
+        _algConf.zs = zscore;
+        _algConf.mi = maxIterations;
         needStorageLattice_p = True;
     }
 }
@@ -798,7 +794,7 @@ Bool LatticeStatistics<T>::generateStorageLattice() {
     Double timeOld = 0;
     Double timeNew = 0;
     uInt nsets = pStoreLattice_p->size()/storeLatticeShape.getLast(1)[0];
-    Bool tryOldMethod = _saf.algorithm() == StatisticsData::CLASSICAL;
+    Bool tryOldMethod = _algConf.algorithm == StatisticsData::CLASSICAL;
     if (tryOldMethod) {
         uInt nel = pInLattice_p->size()/nsets;
         timeOld = nsets*(_aOld + _bOld*nel);
@@ -871,8 +867,7 @@ void LatticeStatistics<T>::_doStatsLoop(
     T overallMin = 0;
     Bool isReal = whatType(&currentMax);
 
-    CountedPtr<StatisticsAlgorithm<AccumType, const T*, const Bool*> > sa = _saf.createStatsAlgorithm();
-    Bool isChauv = _saf.algorithm() == StatisticsData::CHAUVENETCRITERION;
+    CountedPtr<StatisticsAlgorithm<AccumType, const T*, const Bool*> > sa = _createStatsAlgorithm();
     LatticeStatsDataProvider<T> lattDP;
     MaskedLatticeStatsDataProvider<T> maskedLattDP;
     LatticeStatsDataProviderBase<T> *dataProvider;
@@ -927,7 +922,7 @@ void LatticeStatistics<T>::_doStatsLoop(
         }
         sa->setDataProvider(dataProvider);
         stats = sa->getStatistics();
-        if (isChauv) {
+        if (_algConf.algorithm == StatisticsData::CHAUVENETCRITERION) {
             ChauvenetCriterionStatistics<AccumType, const T*, const Bool*> *ch
                 = dynamic_cast<ChauvenetCriterionStatistics<AccumType, const T*, const Bool*> *>(
                     &*sa
@@ -1064,7 +1059,7 @@ void LatticeStatistics<T>::generateRobust () {
     static const uInt maxArraySizeBytes = 1e8;
     fractions.insert(0.25);
     fractions.insert(0.75);
-    sa = _saf.createStatsAlgorithm();
+    sa = _createStatsAlgorithm();
     _configureDataProviders(lattDP, maskedLattDP);
     slicer = Slicer(stepper.position(), stepper.endPosition(), Slicer::endIsLast);
     subLat = SubLattice<T>(*pInLattice_p, slicer);
@@ -1139,6 +1134,38 @@ void LatticeStatistics<T>::generateRobust () {
         pStoreLattice_p->putAt(quantiles[0.75] - quantiles[0.25], pos3);
         pStoreLattice_p->putAt(quantiles[0.25], posQ1);
         pStoreLattice_p->putAt(quantiles[0.75], posQ3);
+    }
+}
+
+template <class T>
+CountedPtr<StatisticsAlgorithm<typename LatticeStatistics<T>::AccumType, const T*, const Bool*> >
+LatticeStatistics<T>::_createStatsAlgorithm() const {
+    CountedPtr<StatisticsAlgorithm<AccumType, const T*, const Bool*> > sa;
+    switch (_algConf.algorithm) {
+    case StatisticsData::CLASSICAL:
+        sa = new ClassicalStatistics<AccumType, const T*, const Bool*>();
+        return sa;
+    case StatisticsData::HINGESFENCES: {
+        sa = new HingesFencesStatistics<AccumType, const T*, const Bool*>(_algConf.hf);
+        return sa;
+    }
+    case StatisticsData::FITTOHALF: {
+        sa = new FitToHalfStatistics<AccumType, const T*, const Bool*>(
+            _algConf.ct, _algConf.ud, _algConf.cv
+        );
+        return sa;
+    }
+    case StatisticsData::CHAUVENETCRITERION: {
+        sa = new ChauvenetCriterionStatistics<AccumType, const T*, const Bool*>(
+            _algConf.zs, _algConf.mi
+        );
+        return sa;
+    }
+    default:
+        ThrowCc(
+            "Logic Error: Unhandled algorithm "
+                + String::toString(_algConf.algorithm)
+        );
     }
 }
 

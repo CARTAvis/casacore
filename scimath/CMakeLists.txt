@@ -294,8 +294,6 @@ Mathematics/StatsDataProvider.h
 Mathematics/StatsDataProvider.tcc
 Mathematics/StatisticsAlgorithm.h
 Mathematics/StatisticsAlgorithm.tcc
-Mathematics/StatisticsAlgorithmFactory.h
-Mathematics/StatisticsAlgorithmFactory.tcc
 Mathematics/StatisticsData.h
 Mathematics/StatisticsIncrementer.h
 Mathematics/StatisticsIncrementer.tcc

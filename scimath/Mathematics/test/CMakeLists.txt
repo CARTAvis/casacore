@@ -20,7 +20,6 @@ tMedianSlider
 tSmooth
 tSparseDiff
 tStatAcc
-tStatisticsAlgorithmFactory
 tStatisticsTypes
 tStatisticsUtilities
 tVanVleck
